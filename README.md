@@ -49,6 +49,41 @@ python -m app.main --help
 
 ---
 
+### 3.4 EXE 安装模式（无 Python 运行项目）
+
+如果你希望以单文件可执行程序方式使用：
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+pip install -e .[build]
+./scripts/build_exe.sh
+```
+
+构建产物：
+
+- `dist/wg-ocd`
+
+安装到系统路径（需要 root）：
+
+```bash
+sudo ./scripts/install_exe.sh
+wg-ocd --help
+```
+
+之后可以直接使用：
+
+```bash
+sudo wg-ocd install
+sudo wg-ocd add-client --name alice
+wg-ocd status
+sudo wg-ocd remove-client --name alice
+sudo wg-ocd uninstall
+```
+
+---
+
 ## 4. 详细使用教程（从 0 到 1）
 
 ## 4.1 第一步：安装服务端
