@@ -2,34 +2,37 @@
 
 合法远程访问场景的一键部署 WireGuard 工具（CLI MVP）。
 
-## 功能验收映射
+## 1. 快速说明
 
-- 一键安装：`python -m app.main install`。
-- 至少 1 个客户端配置：`python -m app.main add-client --name alice`。
-- 开机自启：安装流程执行 `systemctl enable wg-quick@wg0`。
-- 客户端新增/删除：`add-client` / `remove-client`。
-- 卸载清理：`python -m app.main uninstall` 清理服务与主要托管文件。
-- 连通性验证：在真实服务器执行 `wg show` + 客户端握手验证（见“故障排查”）。
+`wg-ocd` 当前提供以下命令：
 
-## 工程验收映射
+- `install`：安装并初始化服务端
+- `add-client --name <name>`：新增客户端配置
+- `remove-client --name <name>`：删除客户端
+- `status`：查看服务状态摘要
+- `uninstall`：卸载并清理托管内容
 
-- README：本文件。
-- 配置模板：`src/wg_ocd/templates/*.tpl`。
-- 测试：`tests/`。
-- 错误处理：`src/wg_ocd/exceptions.py` + CLI 捕获。
-- dry-run：`install --dry-run`、`uninstall --dry-run`。
-- 日志：`src/wg_ocd/utils/logging_utils.py`。
-- 备份：`SystemUtils.backup_file`。
-- Git 提交：见仓库历史。
+---
 
-## 权限与环境要求
+## 2. 权限与环境要求
 
 - 真实安装/卸载需 root（或 sudo）权限。
 - 需要 systemd 环境（`wg-quick@wg0` 服务管理）。
 - 需要外网访问能力以自动探测公网 endpoint（可回退到本机 IP）。
-- 若你让我在目标服务器继续做端到端验收，需要你提供该服务器的 sudo 执行权限。
+- 需要开放 UDP 监听端口（默认 51820）。
 
-## 安装
+---
+
+## 3. 安装与开发环境
+
+### 3.1 克隆并进入项目
+
+```bash
+git clone <your-repo-url>
+cd CHAT1
+```
+
+### 3.2 创建虚拟环境并安装
 
 ```bash
 python3 -m venv .venv
@@ -38,43 +41,150 @@ pip install -U pip
 pip install -e .
 ```
 
-## 使用
+### 3.3 查看帮助
+
+```bash
+python -m app.main --help
+```
+
+---
+
+## 4. 详细使用教程（从 0 到 1）
+
+## 4.1 第一步：安装服务端
+
+### 演练模式（不改系统）
 
 ```bash
 python -m app.main install --dry-run
-python -m app.main install
-python -m app.main add-client --name alice
-python -m app.main status
-python -m app.main remove-client --name alice
 ```
 
-## 卸载
+### 真实安装
+
+```bash
+sudo python -m app.main install
+```
+
+### 安装后你应看到
+
+- `/etc/wg-ocd/server/wg0.conf`
+- `/etc/wg-ocd/state/server_keys.json`
+- `/etc/wg-ocd/state/server_meta.json`
+- `systemctl status wg-quick@wg0` 为 active（running）
+
+---
+
+## 4.2 第二步：新增客户端并导入配置
+
+```bash
+sudo python -m app.main add-client --name alice
+sudo cat /etc/wg-ocd/clients/alice.conf
+```
+
+把 `alice.conf` 导入手机或电脑的 WireGuard 客户端后，开启连接。
+
+---
+
+## 4.3 第三步：验证连接握手
+
+在服务端执行：
+
+```bash
+sudo wg show
+```
+
+重点看：
+- 对应 peer 是否存在
+- `latest handshake` 是否是近期时间
+- `transfer` 收发字节是否增长
+
+---
+
+## 4.4 第四步：查看状态
+
+```bash
+python -m app.main status
+```
+
+该命令输出服务摘要（接口名、状态、摘要信息）。
+
+---
+
+## 4.5 第五步：删除客户端
+
+```bash
+sudo python -m app.main remove-client --name alice
+```
+
+删除后再次 `wg show`，应看不到对应 peer。
+
+---
+
+## 4.6 第六步：卸载
+
+### 演练模式
 
 ```bash
 python -m app.main uninstall --dry-run
-python -m app.main uninstall
 ```
 
-## 故障排查
-
-1. 服务状态：`python -m app.main status`。
-2. 服务自启：`systemctl status wg-quick@wg0`。
-3. 连接验证：服务端 `wg show` 看最新握手时间与流量。
-4. 客户端连接失败：检查端口 UDP/51820、防火墙后端、配置导入是否最新。
-
-## 测试
+### 真实卸载
 
 ```bash
-PYTHONPATH=src pytest -q
+sudo python -m app.main uninstall
 ```
 
+卸载后应完成：
+- 停止并禁用 `wg-quick@wg0`
+- 清理 manifest 托管的主要文件
 
-## 真实 E2E 验证（目标机）
+---
 
-在目标服务器（具备 sudo/systemd/wireguard 条件）执行：
+## 5. 真实目标机验收清单
+
+请使用单独文档：
+
+- `ACCEPTANCE_CHECKLIST.md`
+
+该清单已逐条对应：
+- 安装成功
+- 客户端握手成功
+- 开机自启
+- 卸载清理
+
+---
+
+## 6. 一键真实验收脚本（目标机）
 
 ```bash
 ./scripts/e2e_smoke.sh
 ```
 
-该脚本会串联 install -> add-client -> status -> remove-client -> uninstall。
+脚本串联流程：
+
+- install
+- add-client
+- status
+- remove-client
+- uninstall
+
+---
+
+## 7. 工程验收映射
+
+- README：本文件
+- 配置模板：`src/wg_ocd/templates/*.tpl`
+- 测试：`tests/`
+- 错误处理：`src/wg_ocd/exceptions.py` + CLI 捕获
+- dry-run：`install --dry-run`、`uninstall --dry-run`
+- 日志：`src/wg_ocd/utils/logging_utils.py`
+- 备份：`SystemUtils.backup_file`
+- Git 提交：见仓库历史
+
+---
+
+## 8. 测试
+
+```bash
+PYTHONPATH=src pytest -q
+```
