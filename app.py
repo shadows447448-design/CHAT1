@@ -190,6 +190,19 @@ def get_feishu_message_text(message_id: str) -> str:
         return content
 
 
+def find_telegram_reference(*message_ids: str) -> Optional[Tuple[int, int]]:
+    seen = set()
+    for message_id in message_ids:
+        if not message_id or message_id in seen:
+            continue
+        seen.add(message_id)
+        message_text = get_feishu_message_text(message_id)
+        match = re.search(r"\[TG_REF:(-?\d+):(\d+)\]", message_text)
+        if match:
+            return int(match.group(1)), int(match.group(2))
+    return None
+
+
 def format_telegram_forward(message: Dict[str, Any]) -> str:
     text = message.get("text") or message.get("caption") or "[非文本消息]"
     customer = message.get("from", {})
@@ -296,17 +309,17 @@ def feishu_webhook() -> Any:
     except json.JSONDecodeError:
         reply_text = message.get("content", "")
 
-    parent_id = message.get("parent_id") or message.get("root_id")
-    if not parent_id:
+    root_id = message.get("root_id")
+    parent_id = message.get("parent_id")
+    reference_source_ids = [message_id for message_id in (root_id, parent_id) if message_id]
+    if not reference_source_ids:
         return jsonify({"ok": True, "ignored": "not a reply"})
 
-    parent_text = get_feishu_message_text(parent_id)
-    match = re.search(r"\[TG_REF:(-?\d+):(\d+)\]", parent_text)
-    if not match:
+    telegram_ref = find_telegram_reference(*reference_source_ids)
+    if not telegram_ref:
         return jsonify({"ok": True, "ignored": "no tg ref"})
 
-    chat_id = int(match.group(1))
-    telegram_msg_id = int(match.group(2))
+    chat_id, telegram_msg_id = telegram_ref
     send_to_telegram(chat_id, f"客服回复: {reply_text}", reply_to_message_id=telegram_msg_id)
     return jsonify({"ok": True})
 
