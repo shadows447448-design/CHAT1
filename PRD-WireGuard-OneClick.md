@@ -311,3 +311,105 @@ wg-ocd uninstall --keep-backup
 2. 高危安全缺陷（密钥泄露、权限失控）为 0。
 3. 文档完整（安装、升级、回滚、故障排查）。
 4. 在至少两种目标发行版完成端到端验证。
+
+---
+
+## 14. 信息架构（IA）与数据模型（V1）
+
+### 14.1 配置与状态文件布局
+```text
+/etc/wg-ocd/
+  config.yaml                  # 全局配置（端口、网段、DNS、策略）
+  server/
+    wg0.conf                   # 服务端主配置
+    private.key                # 服务端私钥（600）
+    public.key                 # 服务端公钥
+  clients/
+    alice.conf                 # 客户端配置导出
+    bob.conf
+  state/
+    clients.json               # 客户端索引（name/pubkey/ip/status）
+    audit.log                  # 最小审计日志（脱敏后）
+  backup/
+    2026-04-23T12-00-00Z.tar.gz
+```
+
+### 14.2 关键实体
+1. **ServerProfile**：接口名、监听端口、公网网卡、VPN 网段。
+2. **ClientProfile**：名称、公钥、分配 IP、创建时间、状态（active/revoked）。
+3. **RoutePolicy**：`split`（仅内网）/`full-tunnel`（全流量）。
+4. **BackupMeta**：备份时间、配置版本、校验和、恢复兼容性标记。
+
+### 14.3 状态机（客户端）
+`created -> active -> revoked -> (optional) reissued`
+
+- `created`：已生成配置但未握手。
+- `active`：出现成功握手。
+- `revoked`：服务端已移除 peer，配置失效。
+- `reissued`：重置后生成新密钥与新配置（旧配置不可用）。
+
+---
+
+## 15. CLI 命令规范（V1）
+
+### 15.1 命令总览
+
+```bash
+wg-ocd install [--iface wg0] [--port 51820] [--cidr 10.8.0.0/24] [--uplink eth0]
+wg-ocd config show
+wg-ocd client add <name> [--ip 10.8.0.10] [--policy split|full-tunnel]
+wg-ocd client list [--format table|json]
+wg-ocd client revoke <name> [--force]
+wg-ocd client reset <name>
+wg-ocd status [--quick|--full] [--format text|json]
+wg-ocd backup create [--tag pre-change]
+wg-ocd backup list
+wg-ocd restore --id <backup-id> [--mode full|index-only]
+wg-ocd uninstall [--keep-backup|--purge]
+```
+
+### 15.2 交互规范
+1. **破坏性操作二次确认**：`revoke/reset/uninstall/purge` 默认需要 `y/N`。
+2. **机器可读输出**：支持 `--format json` 供 CI/自动化调用。
+3. **错误即退出**：返回非 0 exit code，并打印错误码。
+4. **幂等性**：
+   - 对已安装环境重复执行 `install` 时，应提示“已安装”并支持 `--repair`。
+   - 对已吊销客户端重复 `revoke` 时，应返回可识别的幂等成功码。
+
+---
+
+## 16. 错误码与可观测性（V1）
+
+### 16.1 错误码
+| 错误码 | 含义 | 建议处理 |
+|---|---|---|
+| E1001 | 环境不支持（系统/内核缺少能力） | 更换支持发行版或安装内核模块 |
+| E1002 | 依赖缺失 | 自动安装失败后给出手工安装命令 |
+| E2001 | 配置校验失败 | 检查 CIDR/端口/接口名 |
+| E2002 | 客户端名称冲突 | 更换名称或先吊销旧客户端 |
+| E2003 | IP 地址冲突 | 改为自动分配或指定未占用地址 |
+| E3001 | 服务启动失败 | 检查 `systemctl status wg-quick@wg0` |
+| E3002 | 防火墙规则应用失败 | 检查 iptables/nft 后端与权限 |
+| E4001 | 备份创建失败 | 检查磁盘空间与目录权限 |
+| E4002 | 备份恢复失败 | 校验备份完整性与版本兼容 |
+| E9001 | 未知内部错误 | 建议带 `--debug` 重试并上报日志 |
+
+### 16.2 观测指标（最小集）
+1. 服务可用性：接口在线状态、端口监听状态。
+2. 连接质量：近 24h 成功握手客户端数。
+3. 安全变更：新增/吊销/重置次数。
+4. 风险信号：连续失败握手、异常高频重连。
+
+---
+
+## 17. 版本路线图（v1.1 / v1.2）
+
+### 17.1 v1.1（可运维增强）
+1. 新增 `doctor` 深度诊断命令（云安全组检查提示模板）。
+2. 新增 `policy` 子命令，支持按客户端分组下发 AllowedIPs 模板。
+3. 新增备份加密选项（基于口令/外部 KMS）。
+
+### 17.2 v1.2（团队协作增强）
+1. 增加 RBAC 轻量鉴权层（本地角色：viewer/operator/admin）。
+2. 提供只读 API（本地 Unix Socket），便于接入运维面板。
+3. 审计日志支持转发到 SIEM（JSON Lines）。
