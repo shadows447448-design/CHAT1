@@ -167,6 +167,9 @@ def send_to_telegram(chat_id: int, text: str, reply_to_message_id: Optional[int]
 
     resp = requests.post(f"{telegram_api_base()}/sendMessage", json=payload, timeout=10)
     resp.raise_for_status()
+    data = resp.json()
+    if not data.get("ok", False):
+        raise RuntimeError(f"Telegram send error: {data}")
 
 
 def get_feishu_message_text(message_id: str) -> str:
