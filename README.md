@@ -67,3 +67,14 @@ python -m app.main uninstall
 ```bash
 PYTHONPATH=src pytest -q
 ```
+
+
+## 真实 E2E 验证（目标机）
+
+在目标服务器（具备 sudo/systemd/wireguard 条件）执行：
+
+```bash
+./scripts/e2e_smoke.sh
+```
+
+该脚本会串联 install -> add-client -> status -> remove-client -> uninstall。

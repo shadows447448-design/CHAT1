@@ -50,6 +50,14 @@ class WireGuardManager:
     def save_server_endpoint(self, endpoint: str) -> None:
         self.utils.write_json(self.server_meta, {"endpoint": endpoint})
 
+    def load_server_private_key(self) -> str:
+        if not self.settings.server_conf.exists():
+            raise ValidationError("Server config not found. Run install first.")
+        for line in self.settings.server_conf.read_text(encoding="utf-8").splitlines():
+            if line.strip().startswith("PrivateKey = "):
+                return line.split("=", 1)[1].strip()
+        raise ValidationError("Server config missing PrivateKey.")
+
     def load_server_endpoint(self) -> str:
         return self.utils.read_json(self.server_meta, default={}).get("endpoint", f"127.0.0.1:{self.settings.listen_port}")
 

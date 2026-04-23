@@ -42,8 +42,7 @@ class ClientManager:
             self._save_registry(registry)
             self.wg.add_peer(name, keys["public_key"], ip)
             # rewrite server config with peer blocks and reload service
-            keys_meta = self.wg.generate_server_keys()
-            private_key = self.settings.server_conf.read_text(encoding="utf-8").split("PrivateKey = ")[1].splitlines()[0] if self.settings.server_conf.exists() else keys_meta["private_key"]
+            private_key = self.wg.load_server_private_key()
             self.wg.write_server_config(self.wg.render_server_config(private_key, self.settings.listen_port))
             self.wg.apply_runtime(dry_run=False)
         return client_path
@@ -62,10 +61,9 @@ class ClientManager:
             client_path.unlink(missing_ok=True)
             self.wg.remove_peer(name)
 
-            if self.settings.server_conf.exists():
-                private_key = self.settings.server_conf.read_text(encoding="utf-8").split("PrivateKey = ")[1].splitlines()[0]
-                self.wg.write_server_config(self.wg.render_server_config(private_key, self.settings.listen_port))
-                self.wg.apply_runtime(dry_run=False)
+            private_key = self.wg.load_server_private_key()
+            self.wg.write_server_config(self.wg.render_server_config(private_key, self.settings.listen_port))
+            self.wg.apply_runtime(dry_run=False)
 
     def list_clients(self) -> dict[str, dict[str, str]]:
         return self._registry()

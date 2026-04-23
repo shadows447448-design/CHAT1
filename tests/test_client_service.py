@@ -14,6 +14,10 @@ def client_manager(tmp_path: Path) -> ClientManager:
     template_dir = Path(__file__).resolve().parents[1] / "src" / "wg_ocd" / "templates"
     utils = SystemUtils(template_dir=template_dir, backup_dir=settings.backup_dir)
     wg = WireGuardManager(settings, utils)
+    settings.server_dir.mkdir(parents=True, exist_ok=True)
+    settings.server_conf.write_text("[Interface]\nPrivateKey = test-private\n", encoding="utf-8")
+    wg.save_server_public_key("test-public")
+    wg.save_server_endpoint("127.0.0.1:51820")
     return ClientManager(settings, utils, wg)
 
 

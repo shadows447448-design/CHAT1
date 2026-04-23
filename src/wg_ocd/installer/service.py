@@ -23,16 +23,11 @@ class InstallerManager:
         if hasattr(os, "geteuid") and os.geteuid() != 0:
             raise ValidationError("Root privileges required")
 
-    def check_distribution(self) -> str:
-        info = Path("/etc/os-release")
-        if not info.exists():
-            return "unknown"
-        text = info.read_text(encoding="utf-8").lower()
-        if "ubuntu" in text:
-            return "ubuntu"
-        if "debian" in text:
-            return "debian"
-        return "other"
+    def detect_package_manager(self) -> str:
+        for pm in ["apt-get", "dnf", "yum", "pacman"]:
+            if self.utils.execute(["which", pm], check=False).returncode == 0:
+                return pm
+        return "unknown"
 
     def detect_endpoint(self) -> str:
         pub = self.utils.execute(["bash", "-lc", "curl -4s ifconfig.me"], check=False)
@@ -45,10 +40,19 @@ class InstallerManager:
     def install_packages(self, dry_run: bool = False) -> None:
         if dry_run:
             return
-        distro = self.check_distribution()
-        if distro in {"ubuntu", "debian"}:
+
+        pm = self.detect_package_manager()
+        if pm == "apt-get":
             self.utils.execute(["apt-get", "update"], check=True)
             self.utils.execute(["apt-get", "install", "-y", "wireguard", "wireguard-tools", "curl"], check=True)
+        elif pm == "dnf":
+            self.utils.execute(["dnf", "install", "-y", "wireguard-tools", "curl"], check=True)
+        elif pm == "yum":
+            self.utils.execute(["yum", "install", "-y", "wireguard-tools", "curl"], check=True)
+        elif pm == "pacman":
+            self.utils.execute(["pacman", "-Sy", "--noconfirm", "wireguard-tools", "curl"], check=True)
+        else:
+            raise ValidationError("Unsupported package manager; install wireguard-tools and curl manually")
 
     def configure_systemd(self, dry_run: bool = False) -> None:
         if dry_run:
