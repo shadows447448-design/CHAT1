@@ -39,16 +39,14 @@ class InstallerManager:
             return
         distro = self.check_distribution()
         if distro in {"ubuntu", "debian"}:
-            self.utils.execute(["apt-get", "update"], check=False)
-            self.utils.execute(["apt-get", "install", "-y", "wireguard", "wireguard-tools"], check=False)
-
-    def enable_kernel_forward(self, dry_run: bool = False) -> None:
-        self.fw.setup_nat(dry_run=dry_run)
+            self.utils.execute(["apt-get", "update"], check=True)
+            self.utils.execute(["apt-get", "install", "-y", "wireguard", "wireguard-tools"], check=True)
 
     def configure_systemd(self, dry_run: bool = False) -> None:
         if dry_run:
             return
-        self.utils.execute(["systemctl", "enable", f"wg-quick@{self.settings.interface}"], check=False)
+        self.utils.execute(["systemctl", "enable", f"wg-quick@{self.settings.interface}"], check=True)
+        self.utils.execute(["systemctl", "restart", f"wg-quick@{self.settings.interface}"], check=True)
 
     def install(self, dry_run: bool = False) -> None:
         self.utils.ensure_dirs(self.settings.server_dir, self.settings.clients_dir, self.settings.state_dir)
@@ -60,8 +58,9 @@ class InstallerManager:
         server_cfg = self.wg.render_server_config(server_keys["private_key"], self.settings.listen_port)
         if not dry_run:
             self.wg.write_server_config(server_cfg)
+            self.wg.save_server_public_key(server_keys["public_key"])
 
-        self.enable_kernel_forward(dry_run=dry_run)
+        self.fw.setup_nat(dry_run=dry_run)
         self.fw.allow_port(self.settings.listen_port, dry_run=dry_run)
         self.configure_systemd(dry_run=dry_run)
 
@@ -73,7 +72,8 @@ class InstallerManager:
                     "created_paths": [
                         str(self.settings.server_conf),
                         str(self.settings.registry_file),
-                        str(self.settings.clients_dir),
+                        str(self.settings.state_dir / "peers.json"),
+                        str(self.settings.state_dir / "server_keys.json"),
                     ]
                 },
             )
@@ -85,12 +85,16 @@ class InstallerManager:
         if dry_run:
             return
         self.utils.execute(["systemctl", "disable", f"wg-quick@{self.settings.interface}"], check=False)
+        self.utils.execute(["systemctl", "stop", f"wg-quick@{self.settings.interface}"], check=False)
+
         manifest = self.settings.state_dir / "install-manifest.json"
         data = self.utils.read_json(manifest, default={})
         for path_str in reversed(data.get("created_paths", [])):
             p = Path(path_str)
             if p.is_file():
                 p.unlink(missing_ok=True)
-            elif p.is_dir() and p.exists() and not any(p.iterdir()):
-                p.rmdir()
+        # best-effort cleanup for managed directories
+        for d in [self.settings.clients_dir, self.settings.server_dir, self.settings.state_dir]:
+            if d.exists() and not any(d.iterdir()):
+                d.rmdir()
         manifest.unlink(missing_ok=True)

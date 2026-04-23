@@ -2,13 +2,25 @@
 
 合法远程访问场景的一键部署 WireGuard 工具（CLI MVP）。
 
-## 技术拆分
+## 功能验收映射
 
-- `installer.py`：root/发行版检查、安装包、内核转发、systemd。
-- `wireguard.py`：服务端/客户端密钥、配置渲染、peer 管理。
-- `firewall.py`：检测后端（iptables/nftables/ufw）、NAT、端口放行、卸载移除。
-- `clients.py`：新增/删除/列出/导出客户端配置。
-- `utils.py`：命令执行、备份、模板渲染、日志、路径辅助。
+- 一键安装：`python -m app.main install`。
+- 至少 1 个客户端配置：`python -m app.main add-client --name alice`。
+- 开机自启：安装流程执行 `systemctl enable wg-quick@wg0`。
+- 客户端新增/删除：`add-client` / `remove-client`。
+- 卸载清理：`python -m app.main uninstall` 清理服务与主要托管文件。
+- 连通性验证：在真实服务器执行 `wg show` + 客户端握手验证（见“故障排查”）。
+
+## 工程验收映射
+
+- README：本文件。
+- 配置模板：`src/wg_ocd/templates/*.tpl`。
+- 测试：`tests/`。
+- 错误处理：`src/wg_ocd/exceptions.py` + CLI 捕获。
+- dry-run：`install --dry-run`、`uninstall --dry-run`。
+- 日志：`src/wg_ocd/utils/logging_utils.py`。
+- 备份：`SystemUtils.backup_file`。
+- Git 提交：见仓库历史。
 
 ## 安装
 
@@ -38,10 +50,10 @@ python -m app.main uninstall
 
 ## 故障排查
 
-1. `status` 无输出：检查 `wg` 命令是否存在。
-2. `install` 失败：查看异常里的 `stderr`。
-3. 客户端配置缺失：检查 `clients/` 目录权限。
-4. 防火墙未生效：确认系统使用的后端（nft/iptables/ufw）。
+1. 服务状态：`python -m app.main status`。
+2. 服务自启：`systemctl status wg-quick@wg0`。
+3. 连接验证：服务端 `wg show` 看最新握手时间与流量。
+4. 客户端连接失败：检查端口 UDP/51820、防火墙后端、配置导入是否最新。
 
 ## 测试
 

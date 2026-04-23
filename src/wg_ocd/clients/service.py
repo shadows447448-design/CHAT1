@@ -24,12 +24,12 @@ class ClientManager:
 
         ip = self._next_client_ip(registry)
         keys = self.wg.generate_client_keys()
-        server_keys = self.wg.generate_server_keys()
+        server_public_key = self.wg.load_server_public_key()
 
         cfg = self.wg.render_client_config(
             client_private_key=keys["private_key"],
             client_address=ip,
-            server_public_key=server_keys["public_key"],
+            server_public_key=server_public_key,
         )
         client_path = self.settings.clients_dir / f"{name}.conf"
         self.utils.ensure_dirs(self.settings.clients_dir)

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import secrets
-from pathlib import Path
 
 from wg_ocd.exceptions import CommandExecutionError, ValidationError
 from wg_ocd.settings import Settings
@@ -14,12 +13,19 @@ class WireGuardManager:
     def __init__(self, settings: Settings, utils: SystemUtils) -> None:
         self.settings = settings
         self.utils = utils
+        self.server_key_meta = self.settings.state_dir / "server_keys.json"
 
     def generate_server_keys(self) -> dict[str, str]:
         return {"private_key": secrets.token_urlsafe(32), "public_key": secrets.token_urlsafe(32)}
 
     def generate_client_keys(self) -> dict[str, str]:
         return {"private_key": secrets.token_urlsafe(32), "public_key": secrets.token_urlsafe(32)}
+
+    def save_server_public_key(self, public_key: str) -> None:
+        self.utils.write_json(self.server_key_meta, {"public_key": public_key})
+
+    def load_server_public_key(self) -> str:
+        return self.utils.read_json(self.server_key_meta, default={}).get("public_key", "REPLACE_SERVER_PUBLIC_KEY")
 
     def render_server_config(self, private_key: str, port: int) -> str:
         return self.utils.render_template(
