@@ -16,7 +16,7 @@ class ClientManager:
         self.utils = utils
         self.wg = wg
 
-    def add_client(self, name: str) -> Path:
+    def add_client(self, name: str, dry_run: bool = False) -> Path:
         self._validate_name(name)
         registry = self._registry()
         if name in registry:
@@ -33,25 +33,39 @@ class ClientManager:
         )
         client_path = self.settings.clients_dir / f"{name}.conf"
         self.utils.ensure_dirs(self.settings.clients_dir)
-        self.utils.backup_file(client_path)
-        client_path.write_text(cfg, encoding="utf-8")
 
-        registry[name] = {"ip": ip, "status": "active"}
-        self._save_registry(registry)
-        self.wg.add_peer(name, keys["public_key"], ip)
+        if not dry_run:
+            self.utils.backup_file(client_path)
+            client_path.write_text(cfg, encoding="utf-8")
+
+            registry[name] = {"ip": ip, "status": "active"}
+            self._save_registry(registry)
+            self.wg.add_peer(name, keys["public_key"], ip)
+            # rewrite server config with peer blocks and reload service
+            keys_meta = self.wg.generate_server_keys()
+            private_key = self.settings.server_conf.read_text(encoding="utf-8").split("PrivateKey = ")[1].splitlines()[0] if self.settings.server_conf.exists() else keys_meta["private_key"]
+            self.wg.write_server_config(self.wg.render_server_config(private_key, self.settings.listen_port))
+            self.wg.apply_runtime(dry_run=False)
         return client_path
 
-    def remove_client(self, name: str) -> None:
+    def remove_client(self, name: str, dry_run: bool = False) -> None:
         registry = self._registry()
         if name not in registry:
             raise ValidationError(f"Client does not exist: {name}")
-        registry.pop(name)
-        self._save_registry(registry)
 
-        client_path = self.settings.clients_dir / f"{name}.conf"
-        self.utils.backup_file(client_path)
-        client_path.unlink(missing_ok=True)
-        self.wg.remove_peer(name)
+        if not dry_run:
+            registry.pop(name)
+            self._save_registry(registry)
+
+            client_path = self.settings.clients_dir / f"{name}.conf"
+            self.utils.backup_file(client_path)
+            client_path.unlink(missing_ok=True)
+            self.wg.remove_peer(name)
+
+            if self.settings.server_conf.exists():
+                private_key = self.settings.server_conf.read_text(encoding="utf-8").split("PrivateKey = ")[1].splitlines()[0]
+                self.wg.write_server_config(self.wg.render_server_config(private_key, self.settings.listen_port))
+                self.wg.apply_runtime(dry_run=False)
 
     def list_clients(self) -> dict[str, dict[str, str]]:
         return self._registry()

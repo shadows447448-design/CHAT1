@@ -22,6 +22,13 @@
 - 备份：`SystemUtils.backup_file`。
 - Git 提交：见仓库历史。
 
+## 权限与环境要求
+
+- 真实安装/卸载需 root（或 sudo）权限。
+- 需要 systemd 环境（`wg-quick@wg0` 服务管理）。
+- 需要外网访问能力以自动探测公网 endpoint（可回退到本机 IP）。
+- 若你让我在目标服务器继续做端到端验收，需要你提供该服务器的 sudo 执行权限。
+
 ## 安装
 
 ```bash

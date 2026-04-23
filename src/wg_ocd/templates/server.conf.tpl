@@ -6,3 +6,5 @@ SaveConfig = true
 
 PostUp = ${post_up}
 PostDown = ${post_down}
+
+${peers_block}

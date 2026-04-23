@@ -25,11 +25,11 @@ class Application:
     def install(self, dry_run: bool = False) -> None:
         self.installer.install(dry_run=dry_run)
 
-    def add_client(self, name: str) -> str:
-        return str(self.clients.add_client(name))
+    def add_client(self, name: str, dry_run: bool = False) -> str:
+        return str(self.clients.add_client(name, dry_run=dry_run))
 
-    def remove_client(self, name: str) -> None:
-        self.clients.remove_client(name)
+    def remove_client(self, name: str, dry_run: bool = False) -> None:
+        self.clients.remove_client(name, dry_run=dry_run)
 
     def status(self) -> dict[str, str]:
         return self.wg.status()

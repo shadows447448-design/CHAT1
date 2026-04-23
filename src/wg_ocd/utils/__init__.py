@@ -31,10 +31,10 @@ class SystemUtils:
         self.backup_dir = backup_dir
         self.backup_dir.mkdir(parents=True, exist_ok=True)
 
-    def execute(self, command: list[str], check: bool = True) -> CommandResult:
+    def execute(self, command: list[str], check: bool = True, input_text: str | None = None) -> CommandResult:
         logger.debug("Running command: %s", " ".join(command))
         try:
-            proc = subprocess.run(command, capture_output=True, text=True)
+            proc = subprocess.run(command, input=input_text, capture_output=True, text=True)
         except OSError as exc:
             raise CommandExecutionError(f"Command execution failed: {' '.join(command)} | error={exc}") from exc
         result = CommandResult(proc.returncode, proc.stdout, proc.stderr)

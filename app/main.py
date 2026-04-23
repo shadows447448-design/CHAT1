@@ -55,10 +55,10 @@ def run(argv: list[str] | None = None) -> int:
             app.install(dry_run=args.dry_run)
             logger.info("Install completed.")
         elif args.command == "add-client":
-            config_path = app.add_client(args.name)
+            config_path = app.add_client(args.name, dry_run=False)
             logger.info("Client added. config_path=%s", config_path)
         elif args.command == "remove-client":
-            app.remove_client(args.name)
+            app.remove_client(args.name, dry_run=False)
             logger.info("Client removed: %s", args.name)
         elif args.command == "status":
             payload = {

@@ -34,13 +34,21 @@ class InstallerManager:
             return "debian"
         return "other"
 
+    def detect_endpoint(self) -> str:
+        pub = self.utils.execute(["bash", "-lc", "curl -4s ifconfig.me"], check=False)
+        host = pub.stdout.strip()
+        if not host:
+            ipr = self.utils.execute(["bash", "-lc", "hostname -I | awk '{print $1}'"], check=False)
+            host = ipr.stdout.strip() or "127.0.0.1"
+        return f"{host}:{self.settings.listen_port}"
+
     def install_packages(self, dry_run: bool = False) -> None:
         if dry_run:
             return
         distro = self.check_distribution()
         if distro in {"ubuntu", "debian"}:
             self.utils.execute(["apt-get", "update"], check=True)
-            self.utils.execute(["apt-get", "install", "-y", "wireguard", "wireguard-tools"], check=True)
+            self.utils.execute(["apt-get", "install", "-y", "wireguard", "wireguard-tools", "curl"], check=True)
 
     def configure_systemd(self, dry_run: bool = False) -> None:
         if dry_run:
@@ -54,11 +62,12 @@ class InstallerManager:
             self.check_root()
         self.install_packages(dry_run=dry_run)
 
-        server_keys = self.wg.generate_server_keys()
-        server_cfg = self.wg.render_server_config(server_keys["private_key"], self.settings.listen_port)
         if not dry_run:
+            server_keys = self.wg.generate_server_keys()
+            server_cfg = self.wg.render_server_config(server_keys["private_key"], self.settings.listen_port)
             self.wg.write_server_config(server_cfg)
             self.wg.save_server_public_key(server_keys["public_key"])
+            self.wg.save_server_endpoint(self.detect_endpoint())
 
         self.fw.setup_nat(dry_run=dry_run)
         self.fw.allow_port(self.settings.listen_port, dry_run=dry_run)
@@ -74,6 +83,7 @@ class InstallerManager:
                         str(self.settings.registry_file),
                         str(self.settings.state_dir / "peers.json"),
                         str(self.settings.state_dir / "server_keys.json"),
+                        str(self.settings.state_dir / "server_meta.json"),
                     ]
                 },
             )
@@ -93,7 +103,7 @@ class InstallerManager:
             p = Path(path_str)
             if p.is_file():
                 p.unlink(missing_ok=True)
-        # best-effort cleanup for managed directories
+
         for d in [self.settings.clients_dir, self.settings.server_dir, self.settings.state_dir]:
             if d.exists() and not any(d.iterdir()):
                 d.rmdir()

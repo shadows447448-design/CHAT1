@@ -12,7 +12,7 @@ class FakeUtils(SystemUtils):
         super().__init__(template_dir, backup_dir)
         self.commands: list[list[str]] = []
 
-    def execute(self, command: list[str], check: bool = True):  # type: ignore[override]
+    def execute(self, command: list[str], check: bool = True, input_text: str | None = None):  # type: ignore[override]
         self.commands.append(command)
         from wg_ocd.utils import CommandResult
 
