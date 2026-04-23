@@ -4,6 +4,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -132,6 +134,29 @@ def test_telegram_webhook_forwards_to_feishu(monkeypatch):
 
     assert resp.status_code == 200
     assert app.MESSAGE_BRIDGE["om_123"] == (9, 7)
+
+
+def test_send_to_telegram_rejects_logical_api_failures(monkeypatch):
+    app = load_app_module()
+    calls = []
+
+    def fake_post(url, json, timeout):
+        calls.append((url, json, timeout))
+        return _FakeResponse({"ok": False, "description": "Bad Request: chat not found"})
+
+    monkeypatch.setattr(app.requests, "post", fake_post)
+    monkeypatch.setattr(app, "telegram_api_base", lambda: "https://api.telegram.org/bottoken")
+
+    with pytest.raises(RuntimeError, match="Telegram send error"):
+        app.send_to_telegram(10001, "hello", reply_to_message_id=12)
+
+    assert calls == [
+        (
+            "https://api.telegram.org/bottoken/sendMessage",
+            {"chat_id": 10001, "text": "hello", "reply_to_message_id": 12},
+            10,
+        )
+    ]
 
 
 def test_feishu_webhook_prefers_root_id_for_nested_replies(monkeypatch):
