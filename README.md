@@ -2,13 +2,13 @@
 
 合法远程访问场景的一键部署 WireGuard 工具（CLI MVP）。
 
-## 设计概览
+## 技术拆分
 
-- **模块化结构**：`installer`、`wireguard`、`firewall`、`clients`、`utils`。
-- **命令执行封装**：所有系统命令统一走 `CommandRunner`，返回 `returncode/stdout/stderr`。
-- **模板化配置生成**：服务端与客户端配置均从模板文件渲染。
-- **自动备份**：所有配置修改前自动备份到 `backup/`。
-- **安全日志**：日志不输出密钥等敏感信息。
+- `installer.py`：root/发行版检查、安装包、内核转发、systemd。
+- `wireguard.py`：服务端/客户端密钥、配置渲染、peer 管理。
+- `firewall.py`：检测后端（iptables/nftables/ufw）、NAT、端口放行、卸载移除。
+- `clients.py`：新增/删除/列出/导出客户端配置。
+- `utils.py`：命令执行、备份、模板渲染、日志、路径辅助。
 
 ## 安装
 
@@ -36,14 +36,12 @@ python -m app.main uninstall --dry-run
 python -m app.main uninstall
 ```
 
-卸载会尝试回滚安装阶段记录的创建项（manifest 驱动）。
-
 ## 故障排查
 
-1. `status` 显示 `stopped`：检查 `wg` 是否安装、接口名是否正确。
-2. `install` 失败：查看错误里的 `stderr`（由 `CommandRunner` 捕获）。
-3. 客户端操作失败：检查 `state/clients.json` 是否可写。
-4. 权限问题：确保当前用户有执行系统命令与写配置目录权限。
+1. `status` 无输出：检查 `wg` 命令是否存在。
+2. `install` 失败：查看异常里的 `stderr`。
+3. 客户端配置缺失：检查 `clients/` 目录权限。
+4. 防火墙未生效：确认系统使用的后端（nft/iptables/ufw）。
 
 ## 测试
 

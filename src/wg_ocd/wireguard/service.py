@@ -1,40 +1,77 @@
-"""WireGuard-specific operations."""
+"""WireGuard manager: keygen, templating, peer operations."""
 
 from __future__ import annotations
 
-import logging
+import secrets
+from pathlib import Path
 
-from wg_ocd.exceptions import CommandExecutionError
+from wg_ocd.exceptions import CommandExecutionError, ValidationError
 from wg_ocd.settings import Settings
-from wg_ocd.utils.command import CommandRunner
-
-logger = logging.getLogger(__name__)
+from wg_ocd.utils import SystemUtils
 
 
-class WireGuardService:
-    """Handles WireGuard interface and config-level operations."""
-
-    def __init__(self, settings: Settings, command_runner: CommandRunner | None = None) -> None:
+class WireGuardManager:
+    def __init__(self, settings: Settings, utils: SystemUtils) -> None:
         self.settings = settings
-        self.command_runner = command_runner or CommandRunner()
+        self.utils = utils
 
-    def apply_server_config(self, dry_run: bool = False) -> None:
-        if dry_run:
-            logger.info("Dry-run: skip apply server config")
-            return
-        self.command_runner.run(["wg", "syncconf", self.settings.interface, str(self.settings.server_conf)])
+    def generate_server_keys(self) -> dict[str, str]:
+        return {"private_key": secrets.token_urlsafe(32), "public_key": secrets.token_urlsafe(32)}
 
-    def get_status(self) -> dict[str, str]:
+    def generate_client_keys(self) -> dict[str, str]:
+        return {"private_key": secrets.token_urlsafe(32), "public_key": secrets.token_urlsafe(32)}
+
+    def render_server_config(self, private_key: str, port: int) -> str:
+        return self.utils.render_template(
+            "server.conf.tpl",
+            {
+                "server_address": self.settings.server_address,
+                "listen_port": str(port),
+                "private_key": private_key,
+                "post_up": "iptables -A FORWARD -i wg0 -j ACCEPT",
+                "post_down": "iptables -D FORWARD -i wg0 -j ACCEPT",
+            },
+        )
+
+    def render_client_config(self, client_private_key: str, client_address: str, server_public_key: str) -> str:
+        return self.utils.render_template(
+            "client.conf.tpl",
+            {
+                "client_private_key": client_private_key,
+                "client_address": client_address,
+                "dns": "1.1.1.1",
+                "server_public_key": server_public_key,
+                "endpoint": f"vpn.example.com:{self.settings.listen_port}",
+                "allowed_ips": "0.0.0.0/0",
+            },
+        )
+
+    def write_server_config(self, content: str) -> None:
+        self.utils.ensure_dirs(self.settings.server_dir)
+        self.utils.backup_file(self.settings.server_conf)
+        self.settings.server_conf.write_text(content, encoding="utf-8")
+
+    def add_peer(self, name: str, public_key: str, address: str) -> None:
+        if not name:
+            raise ValidationError("peer name required")
+        peers_file = self.settings.state_dir / "peers.json"
+        peers = self.utils.read_json(peers_file, default={})
+        peers[name] = {"public_key": public_key, "address": address}
+        self.utils.write_json(peers_file, peers)
+
+    def remove_peer(self, name: str) -> None:
+        peers_file = self.settings.state_dir / "peers.json"
+        peers = self.utils.read_json(peers_file, default={})
+        peers.pop(name, None)
+        self.utils.write_json(peers_file, peers)
+
+    def status(self) -> dict[str, str]:
         try:
-            result = self.command_runner.run(["wg", "show"], check=False)
+            result = self.utils.execute(["wg", "show"], check=False)
             return {
                 "service": "running" if result.returncode == 0 else "stopped",
                 "interface": self.settings.interface,
                 "summary": result.stdout.strip()[:200],
             }
         except CommandExecutionError:
-            return {
-                "service": "unknown",
-                "interface": self.settings.interface,
-                "summary": "wg command unavailable",
-            }
+            return {"service": "unknown", "interface": self.settings.interface, "summary": "wg command unavailable"}

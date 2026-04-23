@@ -1,97 +1,84 @@
-"""Client lifecycle operations."""
+"""Client manager: add/remove/list/export configs."""
 
 from __future__ import annotations
 
-import json
-import logging
 from pathlib import Path
 
-from wg_ocd.config.templates import render_template
 from wg_ocd.exceptions import ValidationError
 from wg_ocd.settings import Settings
-from wg_ocd.utils.backup import BackupManager
+from wg_ocd.utils import SystemUtils
+from wg_ocd.wireguard.service import WireGuardManager
 
-logger = logging.getLogger(__name__)
 
-
-class ClientService:
-    """Manage WireGuard clients."""
-
-    def __init__(self, settings: Settings) -> None:
+class ClientManager:
+    def __init__(self, settings: Settings, utils: SystemUtils, wg: WireGuardManager) -> None:
         self.settings = settings
-        self.backup = BackupManager(self.settings.backup_dir)
+        self.utils = utils
+        self.wg = wg
 
     def add_client(self, name: str) -> Path:
         self._validate_name(name)
-        self._ensure_dirs()
-        registry = self._load_registry()
+        registry = self._registry()
         if name in registry:
             raise ValidationError(f"Client already exists: {name}")
 
         ip = self._next_client_ip(registry)
-        registry[name] = {"ip": ip, "status": "active"}
+        keys = self.wg.generate_client_keys()
+        server_keys = self.wg.generate_server_keys()
 
-        self.backup.backup_file(self.settings.registry_file)
-        self.settings.registry_file.write_text(json.dumps(registry, indent=2), encoding="utf-8")
-
-        client_config = render_template(
-            "client.conf.tpl",
-            {
-                "client_private_key": "REPLACE_CLIENT_PRIVATE_KEY",
-                "client_address": ip,
-                "dns": "1.1.1.1",
-                "server_public_key": "REPLACE_SERVER_PUBLIC_KEY",
-                "endpoint": "vpn.example.com:51820",
-                "allowed_ips": "0.0.0.0/0",
-            },
+        cfg = self.wg.render_client_config(
+            client_private_key=keys["private_key"],
+            client_address=ip,
+            server_public_key=server_keys["public_key"],
         )
         client_path = self.settings.clients_dir / f"{name}.conf"
-        client_path.write_text(client_config, encoding="utf-8")
+        self.utils.ensure_dirs(self.settings.clients_dir)
+        self.utils.backup_file(client_path)
+        client_path.write_text(cfg, encoding="utf-8")
 
-        logger.info("Client added: %s", name)
+        registry[name] = {"ip": ip, "status": "active"}
+        self._save_registry(registry)
+        self.wg.add_peer(name, keys["public_key"], ip)
         return client_path
 
     def remove_client(self, name: str) -> None:
-        self._validate_name(name)
-        registry = self._load_registry()
+        registry = self._registry()
         if name not in registry:
             raise ValidationError(f"Client does not exist: {name}")
-
-        self.backup.backup_file(self.settings.registry_file)
         registry.pop(name)
-        self.settings.registry_file.write_text(json.dumps(registry, indent=2), encoding="utf-8")
+        self._save_registry(registry)
 
         client_path = self.settings.clients_dir / f"{name}.conf"
-        if client_path.exists():
-            self.backup.backup_file(client_path)
-            client_path.unlink()
-
-        logger.info("Client removed: %s", name)
+        self.utils.backup_file(client_path)
+        client_path.unlink(missing_ok=True)
+        self.wg.remove_peer(name)
 
     def list_clients(self) -> dict[str, dict[str, str]]:
-        return self._load_registry()
+        return self._registry()
 
-    def _ensure_dirs(self) -> None:
-        self.settings.clients_dir.mkdir(parents=True, exist_ok=True)
-        self.settings.state_dir.mkdir(parents=True, exist_ok=True)
-        if not self.settings.registry_file.exists():
-            self.settings.registry_file.write_text("{}", encoding="utf-8")
+    def export_config(self, name: str) -> str:
+        client_path = self.settings.clients_dir / f"{name}.conf"
+        if not client_path.exists():
+            raise ValidationError(f"Client config not found: {name}")
+        return client_path.read_text(encoding="utf-8")
 
-    def _load_registry(self) -> dict[str, dict[str, str]]:
-        self._ensure_dirs()
-        return json.loads(self.settings.registry_file.read_text(encoding="utf-8"))
+    def _registry(self) -> dict[str, dict[str, str]]:
+        self.utils.ensure_dirs(self.settings.state_dir)
+        return self.utils.read_json(self.settings.registry_file, default={})
+
+    def _save_registry(self, registry: dict[str, dict[str, str]]) -> None:
+        self.utils.backup_file(self.settings.registry_file)
+        self.utils.write_json(self.settings.registry_file, registry)
 
     @staticmethod
     def _validate_name(name: str) -> None:
         if not name or not name.replace("-", "").replace("_", "").isalnum():
-            raise ValidationError(
-                "Client name must be non-empty and contain only letters, numbers, '-' or '_'."
-            )
+            raise ValidationError("invalid client name")
 
     @staticmethod
     def _next_client_ip(registry: dict[str, dict[str, str]]) -> str:
-        used = {int(info["ip"].split(".")[-1].split("/")[0]) for info in registry.values()} if registry else set()
-        for last in range(2, 255):
-            if last not in used:
-                return f"10.8.0.{last}/32"
-        raise ValidationError("No available client IP address")
+        used = {int(v["ip"].split(".")[-1].split("/")[0]) for v in registry.values()} if registry else set()
+        for i in range(2, 255):
+            if i not in used:
+                return f"10.8.0.{i}/32"
+        raise ValidationError("No available client IP")
