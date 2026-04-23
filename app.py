@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import sqlite3
 import time
 from functools import lru_cache
 from typing import Any, Dict, Optional, Tuple
@@ -9,22 +10,7 @@ import requests
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
-
-
-def require_env(name: str) -> str:
-    value = os.getenv(name)
-    if not value:
-        raise RuntimeError(f"Missing required environment variable: {name}")
-    return value
-
-
-TELEGRAM_BOT_TOKEN = require_env("TELEGRAM_BOT_TOKEN")
-FEISHU_APP_ID = require_env("FEISHU_APP_ID")
-FEISHU_APP_SECRET = require_env("FEISHU_APP_SECRET")
-FEISHU_TARGET_CHAT_ID = require_env("FEISHU_TARGET_CHAT_ID")
-CLAUDE_API_KEY = require_env("CLAUDE_API_KEY")
-CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-latest")
-PORT = int(os.getenv("PORT", "8080"))
+DB_PATH = os.getenv("CONFIG_DB_PATH", "bridge_config.db")
 
 # In production you should switch this to Redis or DB.
 # key: feishu_message_id -> value: (telegram_chat_id, telegram_message_id)
@@ -40,15 +26,54 @@ class TokenCache:
 TOKEN_CACHE = TokenCache()
 
 
+def init_db() -> None:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            """
+        )
+        conn.commit()
+
+
+def set_setting(key: str, value: str) -> None:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            """
+            INSERT INTO settings(key, value, updated_at) VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+            """,
+            (key, value, int(time.time())),
+        )
+        conn.commit()
+
+
+def get_setting(key: str, default: Optional[str] = None) -> Optional[str]:
+    with sqlite3.connect(DB_PATH) as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    return row[0] if row else default
+
+
+def config_value(name: str, required: bool = False, default: Optional[str] = None) -> str:
+    value = get_setting(name) or os.getenv(name) or default
+    if required and not value:
+        raise RuntimeError(f"Missing required config: {name}. Please configure in /admin or env.")
+    return value or ""
+
+
 @lru_cache(maxsize=1)
 def telegram_api_base() -> str:
-    return f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
+    token = config_value("TELEGRAM_BOT_TOKEN", required=True)
+    return f"https://api.telegram.org/bot{token}"
 
 
 def is_non_english(text: str) -> bool:
     if not text:
         return False
-    # Heuristic: contains CJK or many non-ASCII characters.
     if re.search(r"[\u4e00-\u9fff]", text):
         return True
     non_ascii = sum(1 for c in text if ord(c) > 127)
@@ -59,30 +84,41 @@ def translate_to_english(text: str) -> Optional[str]:
     if not is_non_english(text):
         return None
 
-    url = "https://api.anthropic.com/v1/messages"
-    headers = {
-        "x-api-key": CLAUDE_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
-    payload: Dict[str, Any] = {
-        "model": CLAUDE_MODEL,
-        "max_tokens": 400,
+    api_key = config_value("LLM_API_KEY")
+    if not api_key:
+        return None
+
+    api_base = config_value("LLM_API_BASE", default="https://api.openai.com/v1")
+    model = config_value("LLM_MODEL", default="gpt-4o-mini")
+    endpoint = f"{api_base.rstrip('/')}/chat/completions"
+
+    payload = {
+        "model": model,
         "temperature": 0,
-        "system": "You are a professional customer-support translator. Translate the input into concise natural English.",
-        "messages": [{"role": "user", "content": text}],
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are a customer-support translator. Translate user content into concise natural English.",
+            },
+            {"role": "user", "content": text},
+        ],
     }
 
-    resp = requests.post(url, headers=headers, json=payload, timeout=20)
+    resp = requests.post(
+        endpoint,
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json=payload,
+        timeout=20,
+    )
     resp.raise_for_status()
     data = resp.json()
-    for block in data.get("content", []):
-        if block.get("type") == "text":
-            return block.get("text", "").strip()
-    return None
+    return data.get("choices", [{}])[0].get("message", {}).get("content", "").strip() or None
 
 
 def get_feishu_tenant_access_token() -> str:
+    app_id = config_value("FEISHU_APP_ID", required=True)
+    app_secret = config_value("FEISHU_APP_SECRET", required=True)
+
     now = time.time()
     if TOKEN_CACHE.value and now < TOKEN_CACHE.expire_at - 30:
         return TOKEN_CACHE.value
@@ -90,7 +126,7 @@ def get_feishu_tenant_access_token() -> str:
     resp = requests.post(
         "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
         headers={"content-type": "application/json"},
-        json={"app_id": FEISHU_APP_ID, "app_secret": FEISHU_APP_SECRET},
+        json={"app_id": app_id, "app_secret": app_secret},
         timeout=10,
     )
     resp.raise_for_status()
@@ -104,16 +140,14 @@ def get_feishu_tenant_access_token() -> str:
 
 
 def send_to_feishu_group(text: str) -> str:
+    chat_id = config_value("FEISHU_TARGET_CHAT_ID", required=True)
     token = get_feishu_tenant_access_token()
     resp = requests.post(
         "https://open.feishu.cn/open-apis/im/v1/messages",
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        },
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         params={"receive_id_type": "chat_id"},
         json={
-            "receive_id": FEISHU_TARGET_CHAT_ID,
+            "receive_id": chat_id,
             "msg_type": "text",
             "content": json.dumps({"text": text}, ensure_ascii=False),
         },
@@ -127,18 +161,11 @@ def send_to_feishu_group(text: str) -> str:
 
 
 def send_to_telegram(chat_id: int, text: str, reply_to_message_id: Optional[int] = None) -> None:
-    payload: Dict[str, Any] = {
-        "chat_id": chat_id,
-        "text": text,
-    }
+    payload: Dict[str, Any] = {"chat_id": chat_id, "text": text}
     if reply_to_message_id:
         payload["reply_to_message_id"] = reply_to_message_id
 
-    resp = requests.post(
-        f"{telegram_api_base()}/sendMessage",
-        json=payload,
-        timeout=10,
-    )
+    resp = requests.post(f"{telegram_api_base()}/sendMessage", json=payload, timeout=10)
     resp.raise_for_status()
 
 
@@ -157,7 +184,6 @@ def get_feishu_message_text(message_id: str) -> str:
     content = data.get("data", {}).get("items", [{}])[0].get("body", {}).get("content", "")
     if not content:
         return ""
-
     try:
         return json.loads(content).get("text", "")
     except json.JSONDecodeError:
@@ -190,6 +216,57 @@ def healthz() -> Any:
     return jsonify({"ok": True})
 
 
+@app.get("/admin")
+def admin_page() -> str:
+    keys = [
+        "TELEGRAM_BOT_TOKEN",
+        "FEISHU_APP_ID",
+        "FEISHU_APP_SECRET",
+        "FEISHU_TARGET_CHAT_ID",
+        "LLM_API_BASE",
+        "LLM_API_KEY",
+        "LLM_MODEL",
+    ]
+    rows = []
+    for key in keys:
+        val = get_setting(key, "")
+        show = val if key in ("LLM_API_BASE", "LLM_MODEL", "FEISHU_TARGET_CHAT_ID") else ("***" if val else "")
+        rows.append(f"<tr><td>{key}</td><td><input name='{key}' value='{show}' style='width:460px'/></td></tr>")
+
+    return (
+        "<html><body><h2>Bridge Admin</h2>"
+        "<p>绑定 Telegram / Feishu，并配置任意 OpenAI 兼容模型 API。</p>"
+        "<form method='post' action='/admin'>"
+        "<table>"
+        + "".join(rows)
+        + "</table><button type='submit'>保存配置</button></form>"
+        "</body></html>"
+    )
+
+
+@app.post("/admin")
+def admin_save() -> Any:
+    form = request.form
+    sensitive = {"TELEGRAM_BOT_TOKEN", "FEISHU_APP_ID", "FEISHU_APP_SECRET", "LLM_API_KEY"}
+    for key in [
+        "TELEGRAM_BOT_TOKEN",
+        "FEISHU_APP_ID",
+        "FEISHU_APP_SECRET",
+        "FEISHU_TARGET_CHAT_ID",
+        "LLM_API_BASE",
+        "LLM_API_KEY",
+        "LLM_MODEL",
+    ]:
+        val = (form.get(key) or "").strip()
+        if key in sensitive and val == "***":
+            continue
+        if val:
+            set_setting(key, val)
+    telegram_api_base.cache_clear()
+    TOKEN_CACHE.value = None
+    return jsonify({"ok": True, "message": "saved"})
+
+
 @app.post("/webhook/telegram")
 def telegram_webhook() -> Any:
     payload = request.get_json(force=True, silent=True) or {}
@@ -200,15 +277,12 @@ def telegram_webhook() -> Any:
     text = format_telegram_forward(message)
     feishu_message_id = send_to_feishu_group(text)
     MESSAGE_BRIDGE[feishu_message_id] = (message["chat"]["id"], message["message_id"])
-
     return jsonify({"ok": True})
 
 
 @app.post("/webhook/feishu")
 def feishu_webhook() -> Any:
     payload = request.get_json(force=True, silent=True) or {}
-
-    # URL verification handshake.
     if payload.get("type") == "url_verification":
         return jsonify({"challenge": payload.get("challenge")})
 
@@ -217,7 +291,6 @@ def feishu_webhook() -> Any:
     if message.get("message_type") != "text":
         return jsonify({"ok": True, "ignored": "non-text"})
 
-    reply_text = ""
     try:
         reply_text = json.loads(message.get("content", "{}")).get("text", "")
     except json.JSONDecodeError:
@@ -235,9 +308,10 @@ def feishu_webhook() -> Any:
     chat_id = int(match.group(1))
     telegram_msg_id = int(match.group(2))
     send_to_telegram(chat_id, f"客服回复: {reply_text}", reply_to_message_id=telegram_msg_id)
-
     return jsonify({"ok": True})
 
 
+init_db()
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=PORT)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "8080")))
