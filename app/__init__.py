@@ -1,0 +1,1 @@
+"""CLI MVP module namespace."""
