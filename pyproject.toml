@@ -4,20 +4,21 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wg-ocd"
-version = "0.1.0"
+version = "0.2.0"
 description = "One-click WireGuard VPN deployment CLI"
 readme = "README.md"
 requires-python = ">=3.10"
-authors = [
-  {name = "wg-ocd maintainers"}
-]
+authors = [{ name = "wg-ocd maintainers" }]
 dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
 
 [project.scripts]
 wg-ocd = "wg_ocd.cli:main"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

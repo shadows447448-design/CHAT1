@@ -1,12 +1,4 @@
-"""CLI MVP entrypoint.
-
-Usage examples:
-  python -m app.main install
-  python -m app.main add-client --name alice
-  python -m app.main remove-client --name alice
-  python -m app.main status
-  python -m app.main uninstall
-"""
+"""CLI MVP entrypoint."""
 
 from __future__ import annotations
 
@@ -16,7 +8,6 @@ import logging
 import sys
 from pathlib import Path
 
-# Allow `python -m app.main ...` to import the src-layout package without install.
 ROOT_DIR = Path(__file__).resolve().parents[1]
 SRC_DIR = ROOT_DIR / "src"
 if str(SRC_DIR) not in sys.path:
@@ -30,15 +21,13 @@ logger = logging.getLogger(__name__)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="python -m app.main",
-        description="WireGuard one-click deploy CLI MVP",
-    )
+    parser = argparse.ArgumentParser(prog="python -m app.main", description="WireGuard one-click deploy CLI MVP")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging")
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("install", help="完成完整部署")
+    install_parser = subparsers.add_parser("install", help="完成完整部署")
+    install_parser.add_argument("--dry-run", action="store_true", help="Preview install actions without changes")
 
     add_client_parser = subparsers.add_parser("add-client", help="新建客户端配置")
     add_client_parser.add_argument("--name", required=True, help="Client name")
@@ -47,7 +36,9 @@ def build_parser() -> argparse.ArgumentParser:
     remove_client_parser.add_argument("--name", required=True, help="Client name")
 
     subparsers.add_parser("status", help="查看服务状态和配置摘要")
-    subparsers.add_parser("uninstall", help="移除服务和规则")
+
+    uninstall_parser = subparsers.add_parser("uninstall", help="移除服务和规则")
+    uninstall_parser.add_argument("--dry-run", action="store_true", help="Preview uninstall actions without changes")
 
     return parser
 
@@ -61,11 +52,11 @@ def run(argv: list[str] | None = None) -> int:
 
     try:
         if args.command == "install":
-            app.install()
+            app.install(dry_run=args.dry_run)
             logger.info("Install completed.")
         elif args.command == "add-client":
-            app.add_client(args.name)
-            logger.info("Client added: %s", args.name)
+            config_path = app.add_client(args.name)
+            logger.info("Client added. config_path=%s", config_path)
         elif args.command == "remove-client":
             app.remove_client(args.name)
             logger.info("Client removed: %s", args.name)
@@ -75,12 +66,11 @@ def run(argv: list[str] | None = None) -> int:
                 "config_summary": {
                     "interface": "wg0",
                     "managed_by": "wg-ocd",
-                    "mode": "mvp-stub",
                 },
             }
             print(json.dumps(payload, ensure_ascii=False, indent=2))
         elif args.command == "uninstall":
-            app.uninstall()
+            app.uninstall(dry_run=args.dry_run)
             logger.info("Uninstall completed.")
         else:
             parser.error("Unknown command")
@@ -96,7 +86,6 @@ def run(argv: list[str] | None = None) -> int:
 
 
 def main() -> None:
-    """Console-script friendly wrapper."""
     raise SystemExit(run())
 
 

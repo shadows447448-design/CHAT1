@@ -1,73 +1,16 @@
 # wg-ocd
 
-一个用于实现 **一键部署 WireGuard VPN** 的 Python CLI 项目（CLI MVP）。
+合法远程访问场景的一键部署 WireGuard 工具（CLI MVP）。
 
-> 当前阶段先完成 CLI MVP：命令入口、子命令职责、模块边界、日志与错误处理。
+## 设计概览
 
-## 目录结构
+- **模块化结构**：`installer`、`wireguard`、`firewall`、`clients`、`utils`。
+- **命令执行封装**：所有系统命令统一走 `CommandRunner`，返回 `returncode/stdout/stderr`。
+- **模板化配置生成**：服务端与客户端配置均从模板文件渲染。
+- **自动备份**：所有配置修改前自动备份到 `backup/`。
+- **安全日志**：日志不输出密钥等敏感信息。
 
-```text
-.
-├── app
-│   ├── __init__.py
-│   └── main.py                  # MVP 命令入口（python -m app.main）
-├── pyproject.toml
-├── README.md
-└── src
-    └── wg_ocd
-        ├── __init__.py
-        ├── app.py               # 业务编排层
-        ├── cli.py               # 兼容入口（保留）
-        ├── exceptions.py
-        ├── clients
-        │   ├── __init__.py
-        │   └── service.py
-        ├── firewall
-        │   ├── __init__.py
-        │   └── service.py
-        ├── installer
-        │   ├── __init__.py
-        │   └── service.py
-        ├── utils
-        │   ├── __init__.py
-        │   ├── command.py
-        │   └── logging_utils.py
-        └── wireguard
-            ├── __init__.py
-            └── service.py
-```
-
-## CLI MVP 命令
-
-按以下方式运行：
-
-```bash
-python -m app.main install
-python -m app.main add-client --name alice
-python -m app.main remove-client --name alice
-python -m app.main status
-python -m app.main uninstall
-```
-
-### 子命令职责
-
-- `install`：完成完整部署（安装、规则、服务配置）。
-- `add-client`：新建客户端配置。
-- `remove-client`：删除客户端。
-- `status`：查看服务状态和配置摘要。
-- `uninstall`：移除服务和规则。
-
-## 本地开发
-
-### 1) 直接运行（推荐）
-
-无需安装，直接执行：
-
-```bash
-python -m app.main --help
-```
-
-### 2) 可选安装方式
+## 安装
 
 ```bash
 python3 -m venv .venv
@@ -76,16 +19,34 @@ pip install -U pip
 pip install -e .
 ```
 
-安装后可使用：
+## 使用
 
 ```bash
-wg-ocd --help
+python -m app.main install --dry-run
+python -m app.main install
+python -m app.main add-client --name alice
+python -m app.main status
+python -m app.main remove-client --name alice
 ```
 
-## 设计说明
+## 卸载
 
-- CLI 采用 `argparse`。
-- 模块按 `installer` / `wireguard` / `firewall` / `clients` / `utils` 拆分。
-- 统一日志初始化：`utils/logging_utils.py`。
-- 统一错误处理：`WGOCDError` 及其子类。
-- 当前实现为 MVP stub，后续逐步接入真实系统命令（`wg`, `wg-quick`, `ip`, `nft/iptables`）。
+```bash
+python -m app.main uninstall --dry-run
+python -m app.main uninstall
+```
+
+卸载会尝试回滚安装阶段记录的创建项（manifest 驱动）。
+
+## 故障排查
+
+1. `status` 显示 `stopped`：检查 `wg` 是否安装、接口名是否正确。
+2. `install` 失败：查看错误里的 `stderr`（由 `CommandRunner` 捕获）。
+3. 客户端操作失败：检查 `state/clients.json` 是否可写。
+4. 权限问题：确保当前用户有执行系统命令与写配置目录权限。
+
+## 测试
+
+```bash
+PYTHONPATH=src pytest -q
+```
