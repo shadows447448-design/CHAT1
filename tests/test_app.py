@@ -132,3 +132,42 @@ def test_telegram_webhook_forwards_to_feishu(monkeypatch):
 
     assert resp.status_code == 200
     assert app.MESSAGE_BRIDGE["om_123"] == (9, 7)
+
+
+def test_feishu_webhook_prefers_root_id_for_nested_replies(monkeypatch):
+    app = load_app_module()
+    lookups = []
+    sent_messages = []
+
+    def fake_get_feishu_message_text(message_id):
+        lookups.append(message_id)
+        if message_id == "om_root":
+            return "Original Telegram inquiry\n[TG_REF:10001:12]"
+        if message_id == "om_parent":
+            return "Intermediate Feishu reply without a marker"
+        return ""
+
+    def fake_send_to_telegram(chat_id, text, reply_to_message_id=None):
+        sent_messages.append((chat_id, text, reply_to_message_id))
+
+    monkeypatch.setattr(app, "get_feishu_message_text", fake_get_feishu_message_text)
+    monkeypatch.setattr(app, "send_to_telegram", fake_send_to_telegram)
+
+    client = app.app.test_client()
+    resp = client.post(
+        "/webhook/feishu",
+        json={
+            "event": {
+                "message": {
+                    "message_type": "text",
+                    "content": '{"text": "We can help with that"}',
+                    "parent_id": "om_parent",
+                    "root_id": "om_root",
+                }
+            }
+        },
+    )
+
+    assert resp.status_code == 200
+    assert lookups == ["om_root"]
+    assert sent_messages == [(10001, "客服回复: We can help with that", 12)]
