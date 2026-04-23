@@ -31,9 +31,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     add_client_parser = subparsers.add_parser("add-client", help="新建客户端配置")
     add_client_parser.add_argument("--name", required=True, help="Client name")
+    add_client_parser.add_argument("--dry-run", action="store_true", help="Preview add-client without changes")
 
     remove_client_parser = subparsers.add_parser("remove-client", help="删除客户端")
     remove_client_parser.add_argument("--name", required=True, help="Client name")
+    remove_client_parser.add_argument("--dry-run", action="store_true", help="Preview remove-client without changes")
 
     subparsers.add_parser("status", help="查看服务状态和配置摘要")
 
@@ -55,10 +57,10 @@ def run(argv: list[str] | None = None) -> int:
             app.install(dry_run=args.dry_run)
             logger.info("Install completed.")
         elif args.command == "add-client":
-            config_path = app.add_client(args.name, dry_run=False)
+            config_path = app.add_client(args.name, dry_run=args.dry_run)
             logger.info("Client added. config_path=%s", config_path)
         elif args.command == "remove-client":
-            app.remove_client(args.name, dry_run=False)
+            app.remove_client(args.name, dry_run=args.dry_run)
             logger.info("Client removed: %s", args.name)
         elif args.command == "status":
             payload = {

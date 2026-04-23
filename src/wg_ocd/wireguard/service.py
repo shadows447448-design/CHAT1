@@ -128,12 +128,22 @@ class WireGuardManager:
             return
 
     def status(self) -> dict[str, str]:
+        peers = self.utils.read_json(self.peers_file, default={})
+        enabled = self.utils.execute(["systemctl", "is-enabled", f"wg-quick@{self.settings.interface}"], check=False)
         try:
             result = self.utils.execute(["wg", "show"], check=False)
             return {
                 "service": "running" if result.returncode == 0 else "stopped",
+                "autostart": "enabled" if enabled.returncode == 0 else "disabled",
                 "interface": self.settings.interface,
+                "peer_count": str(len(peers)),
                 "summary": result.stdout.strip()[:200],
             }
         except CommandExecutionError:
-            return {"service": "unknown", "interface": self.settings.interface, "summary": "wg command unavailable"}
+            return {
+                "service": "unknown",
+                "autostart": "enabled" if enabled.returncode == 0 else "disabled",
+                "interface": self.settings.interface,
+                "peer_count": str(len(peers)),
+                "summary": "wg command unavailable",
+            }

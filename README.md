@@ -168,6 +168,12 @@ sudo python -m app.main uninstall
 - remove-client
 - uninstall
 
+基础验收检查脚本（安装产物/自启/服务状态）：
+
+```bash
+./scripts/acceptance_check.sh
+```
+
 ---
 
 ## 7. 工程验收映射

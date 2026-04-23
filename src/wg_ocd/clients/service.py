@@ -50,6 +50,8 @@ class ClientManager:
     def remove_client(self, name: str, dry_run: bool = False) -> None:
         registry = self._registry()
         if name not in registry:
+            if dry_run:
+                return
             raise ValidationError(f"Client does not exist: {name}")
 
         if not dry_run:
