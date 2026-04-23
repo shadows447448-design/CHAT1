@@ -37,21 +37,28 @@ def _install_fake_dependencies():
 
     if "flask" not in sys.modules:
         flask_mod = types.ModuleType("flask")
-        _request_state = {"json": None}
+        _request_state = {"json": None, "headers": {}}
 
         class FakeRequest:
             @staticmethod
             def get_json(force=True, silent=True):
                 return _request_state["json"]
 
+            @property
+            def headers(self):
+                return _request_state["headers"]
+
         class FakeClient:
             def __init__(self, app):
                 self._app = app
 
-            def post(self, path, json=None):
+            def post(self, path, json=None, headers=None):
                 _request_state["json"] = json
+                _request_state["headers"] = headers or {}
                 fn = self._app._routes[("POST", path)]
                 body = fn()
+                if isinstance(body, tuple):
+                    body = body[0]
                 return _FakeResponse(body)
 
         class FakeFlask:
@@ -136,6 +143,25 @@ def test_telegram_webhook_forwards_to_feishu(monkeypatch):
     assert app.MESSAGE_BRIDGE["om_123"] == (9, 7)
 
 
+def test_telegram_webhook_rejects_invalid_secret(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", "expected-secret")
+    app = load_app_module()
+
+    def fail_if_called(_text):
+        raise AssertionError("Should not forward when Telegram secret is invalid")
+
+    monkeypatch.setattr(app, "send_to_feishu_group", fail_if_called)
+    client = app.app.test_client()
+    resp = client.post(
+        "/webhook/telegram",
+        json={"message": {"message_id": 7, "chat": {"id": 9}}},
+        headers={"X-Telegram-Bot-Api-Secret-Token": "wrong-secret"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json().get("ignored") == "invalid telegram secret"
+
+
 def test_send_to_telegram_rejects_logical_api_failures(monkeypatch):
     app = load_app_module()
     calls = []
@@ -157,6 +183,34 @@ def test_send_to_telegram_rejects_logical_api_failures(monkeypatch):
             10,
         )
     ]
+
+
+def test_feishu_webhook_rejects_invalid_token(monkeypatch):
+    monkeypatch.setenv("FEISHU_VERIFICATION_TOKEN", "expected-token")
+    app = load_app_module()
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("Should not lookup TG refs when Feishu token is invalid")
+
+    monkeypatch.setattr(app, "find_telegram_reference", fail_if_called)
+    client = app.app.test_client()
+    resp = client.post(
+        "/webhook/feishu",
+        json={
+            "header": {"token": "wrong-token"},
+            "event": {
+                "message": {
+                    "message_type": "text",
+                    "content": '{"text": "hello"}',
+                    "parent_id": "om_parent",
+                    "root_id": "om_root",
+                }
+            },
+        },
+    )
+
+    assert resp.status_code == 200
+    assert resp.json().get("ignored") == "invalid feishu token"
 
 
 def test_feishu_webhook_prefers_root_id_for_nested_replies(monkeypatch):
