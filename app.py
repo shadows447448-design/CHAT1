@@ -242,6 +242,8 @@ def admin_page() -> str:
         "LLM_API_BASE",
         "LLM_API_KEY",
         "LLM_MODEL",
+        "TELEGRAM_WEBHOOK_SECRET",
+        "FEISHU_VERIFICATION_TOKEN",
     ]
     rows = []
     for key in keys:
@@ -263,7 +265,14 @@ def admin_page() -> str:
 @app.post("/admin")
 def admin_save() -> Any:
     form = request.form
-    sensitive = {"TELEGRAM_BOT_TOKEN", "FEISHU_APP_ID", "FEISHU_APP_SECRET", "LLM_API_KEY"}
+    sensitive = {
+        "TELEGRAM_BOT_TOKEN",
+        "FEISHU_APP_ID",
+        "FEISHU_APP_SECRET",
+        "LLM_API_KEY",
+        "TELEGRAM_WEBHOOK_SECRET",
+        "FEISHU_VERIFICATION_TOKEN",
+    }
     for key in [
         "TELEGRAM_BOT_TOKEN",
         "FEISHU_APP_ID",
@@ -272,6 +281,8 @@ def admin_save() -> Any:
         "LLM_API_BASE",
         "LLM_API_KEY",
         "LLM_MODEL",
+        "TELEGRAM_WEBHOOK_SECRET",
+        "FEISHU_VERIFICATION_TOKEN",
     ]:
         val = (form.get(key) or "").strip()
         if key in sensitive and val == "***":
@@ -285,6 +296,12 @@ def admin_save() -> Any:
 
 @app.post("/webhook/telegram")
 def telegram_webhook() -> Any:
+    expected_secret = config_value("TELEGRAM_WEBHOOK_SECRET")
+    if expected_secret:
+        actual_secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        if actual_secret != expected_secret:
+            return jsonify({"ok": True, "ignored": "invalid telegram secret"})
+
     payload = request.get_json(force=True, silent=True) or {}
     message = payload.get("message")
     if not message:
@@ -301,6 +318,12 @@ def feishu_webhook() -> Any:
     payload = request.get_json(force=True, silent=True) or {}
     if payload.get("type") == "url_verification":
         return jsonify({"challenge": payload.get("challenge")})
+
+    expected_token = config_value("FEISHU_VERIFICATION_TOKEN")
+    if expected_token:
+        actual_token = payload.get("header", {}).get("token", "")
+        if actual_token != expected_token:
+            return jsonify({"ok": True, "ignored": "invalid feishu token"})
 
     event = payload.get("event", {})
     message = event.get("message", {})
