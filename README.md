@@ -208,26 +208,32 @@ python3 password_notebook.py export --vault /media/usb/myvault.vlt --out /media/
 
 # 中国风爬塔卡牌小游戏（类《杀戮尖塔》）
 
-`wuxia_spire.py` 是一个“新手友好 + 可操作”的武侠爬塔卡牌游戏。
+新增鼠标操控版：`wuxia_spire_web/` 提供类似《杀戮尖塔》的可视化爬塔、点击地图节点、点击/拖拽卡牌出招、点击奖励选牌体验；`wuxia_spire.py` 仍保留自动演示和测试用模拟逻辑。
 
 特点：
-- 简单上手：命令行交互，开局只需选择难度。
+- 鼠标操作：点击地图节点前进，点击或拖拽卡牌到角色/敌人区域出牌。
+- 可视化框架：开始页、爬塔地图、战斗场景、卡牌奖励、奇遇和结算页。
 - 难度可选：简单 / 标准 / 困难，简单模式更适合新手。
 - 可玩性提升：每次卡牌奖励提供 3 选 1，形成可控构筑路线。
-- 支持自动演示：可通过 `--auto --seed 42` 复现同一局，便于测试和调参。
-- 经典结构：战斗层 + 奇遇层 + Boss 层，并有遗物与金币成长。
+- 支持自动演示：Python 版可通过 `--auto --seed 42` 复现同一局，便于测试和调参。
 - 中国风内容：山贼、黑店掌柜、血刀客、东厂督主，搭配老道传功等奇遇。
 
-快速运行：
+鼠标版快速运行：
 
 ```bash
-python wuxia_spire.py
+python -m http.server 8000
 ```
 
-自动演示：
+然后打开：
+
+```text
+http://localhost:8000/wuxia_spire_web/
+```
+
+Python 自动演示：
 
 ```bash
 python wuxia_spire.py --auto --difficulty normal --seed 42 --floors 10
 ```
 
-详细安装、玩法和测试说明见 [`docs/wuxia_spire.md`](docs/wuxia_spire.md)。
+详细安装、鼠标玩法和测试说明见 [`docs/wuxia_spire.md`](docs/wuxia_spire.md)。

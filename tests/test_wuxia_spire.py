@@ -1,6 +1,12 @@
 import random
+import sys
+from pathlib import Path
 
 import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import wuxia_spire as ws
 
@@ -56,3 +62,24 @@ def test_auto_mode_render_includes_summary_fields():
     assert "生命:" in output
     assert "卡组:" in output
     assert "遗物:" in output
+
+
+def test_mouse_ui_entrypoint_exposes_map_combat_and_rewards():
+    ws_path = ROOT / "wuxia_spire_web/index.html"
+    assert ws_path.exists()
+    html = ws_path.read_text(encoding="utf-8")
+    assert 'id="map-screen"' in html
+    assert 'id="combat-screen"' in html
+    assert 'id="reward-screen"' in html
+    assert 'data-zone="enemy"' in html
+    assert 'data-zone="player"' in html
+
+
+def test_mouse_ui_supports_drag_drop_and_click_cards():
+    script = (ROOT / "wuxia_spire_web/game.js").read_text(encoding="utf-8")
+    assert "dragstart" in script
+    assert "dragover" in script
+    assert "drop" in script
+    assert "playCard" in script
+    assert "mapPlan" in script
+    assert "showCardReward" in script

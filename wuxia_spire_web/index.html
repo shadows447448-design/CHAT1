@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>江湖爬塔 - 鼠标卡牌版</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main id="game" aria-label="江湖爬塔鼠标卡牌游戏">
+    <section id="start-screen" class="panel hero-screen">
+      <div>
+        <p class="eyebrow">武侠 · 卡牌 · 爬塔</p>
+        <h1>江湖爬塔</h1>
+        <p class="subtitle">鼠标点击地图节点、拖拽或点击卡牌出招，像《杀戮尖塔》一样爬塔构筑。</p>
+      </div>
+      <div class="difficulty-picker" aria-label="选择难度">
+        <button class="difficulty selected" data-difficulty="easy">简单<br><span>新手推荐</span></button>
+        <button class="difficulty" data-difficulty="normal">标准<br><span>完整体验</span></button>
+        <button class="difficulty" data-difficulty="hard">困难<br><span>高压挑战</span></button>
+      </div>
+      <button id="start-run" class="primary">开始闯塔</button>
+    </section>
+
+    <section id="map-screen" class="screen hidden">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">江湖路线</p>
+          <h2>点击下一层节点前进</h2>
+        </div>
+        <div id="map-stats" class="stat-row"></div>
+      </header>
+      <div id="map" class="tower-map" aria-label="爬塔地图"></div>
+    </section>
+
+    <section id="combat-screen" class="screen hidden">
+      <header class="topbar">
+        <div>
+          <p id="floor-label" class="eyebrow">第 1 层</p>
+          <h2 id="encounter-title">遭遇敌人</h2>
+        </div>
+        <div id="combat-stats" class="stat-row"></div>
+      </header>
+
+      <div class="battlefield">
+        <div id="player-zone" class="combatant player-zone drop-zone" data-zone="player">
+          <div class="nameplate">少侠</div>
+          <div class="avatar hero-avatar">侠</div>
+          <div id="player-bars" class="bars"></div>
+          <p class="hint">防御牌可拖到此处，也可直接点击打出。</p>
+        </div>
+
+        <div class="battle-log" id="battle-log" aria-live="polite"></div>
+
+        <div id="enemy-zone" class="combatant enemy-zone drop-zone" data-zone="enemy">
+          <div id="enemy-name" class="nameplate">山贼</div>
+          <div class="avatar enemy-avatar">敌</div>
+          <div id="enemy-intent" class="intent"></div>
+          <div id="enemy-bars" class="bars"></div>
+          <p class="hint">攻击牌可拖到敌人身上，或点击卡牌自动攻击。</p>
+        </div>
+      </div>
+
+      <div class="hand-panel">
+        <div class="pile-info">
+          <span id="energy-pill" class="pill">真气 3/3</span>
+          <span id="draw-pill" class="pill">牌库 0</span>
+          <span id="discard-pill" class="pill">弃牌 0</span>
+        </div>
+        <div id="hand" class="hand" aria-label="手牌区"></div>
+        <button id="end-turn" class="primary">结束回合</button>
+      </div>
+    </section>
+
+    <section id="reward-screen" class="screen hidden">
+      <div class="panel reward-panel">
+        <p class="eyebrow">战利品</p>
+        <h2 id="reward-title">选择一张卡加入卡组</h2>
+        <div id="reward-options" class="reward-options"></div>
+        <button id="skip-card" class="secondary">跳过卡牌</button>
+      </div>
+    </section>
+
+    <section id="event-screen" class="screen hidden">
+      <div class="panel reward-panel">
+        <p class="eyebrow">江湖奇遇</p>
+        <h2 id="event-title">奇遇</h2>
+        <p id="event-description" class="event-description"></p>
+        <button id="event-continue" class="primary">继续前进</button>
+      </div>
+    </section>
+
+    <section id="result-screen" class="screen hidden">
+      <div class="panel reward-panel">
+        <p class="eyebrow">本局结算</p>
+        <h2 id="result-title">胜负未定</h2>
+        <div id="result-summary" class="result-summary"></div>
+        <button id="restart" class="primary">再来一局</button>
+      </div>
+    </section>
+  </main>
+  <script src="game.js"></script>
+</body>
+</html>
