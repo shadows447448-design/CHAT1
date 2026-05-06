@@ -203,3 +203,37 @@ python3 password_notebook.py export --vault /media/usb/myvault.vlt --out /media/
 3. 不要在不可信电脑上解锁仓库。
 4. 定期轮换关键账号密码。
 5. 重要数据建议纸质应急恢复信息（如主口令提示策略）单独保存。
+
+---
+
+# 中国风爬塔卡牌小游戏（类《杀戮尖塔》）
+
+新增鼠标操控版：`wuxia_spire_web/` 提供类似《杀戮尖塔》的可视化爬塔、点击地图节点、点击/拖拽卡牌出招、点击奖励选牌体验；`wuxia_spire.py` 仍保留自动演示和测试用模拟逻辑。
+
+特点：
+- 鼠标操作：点击地图节点前进，点击或拖拽卡牌到角色/敌人区域出牌。
+- 可视化框架：开始页、爬塔地图、战斗场景、卡牌奖励、奇遇和结算页。
+- 难度可选：简单 / 标准 / 困难，简单模式更适合新手。
+- 可玩性提升：每次卡牌奖励提供 3 选 1，形成可控构筑路线。
+- 支持自动演示：Python 版可通过 `--auto --seed 42` 复现同一局，便于测试和调参。
+- 中国风内容：山贼、黑店掌柜、血刀客、东厂督主，搭配老道传功等奇遇。
+
+鼠标版快速运行：
+
+```bash
+python -m http.server 8000
+```
+
+然后打开：
+
+```text
+http://localhost:8000/wuxia_spire_web/
+```
+
+Python 自动演示：
+
+```bash
+python wuxia_spire.py --auto --difficulty normal --seed 42 --floors 10
+```
+
+详细安装、鼠标玩法和测试说明见 [`docs/wuxia_spire.md`](docs/wuxia_spire.md)。
