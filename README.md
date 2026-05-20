@@ -1,9 +1,10 @@
 # CHAT1 工具集合
 
-本仓库当前包含两个独立工具：
+本仓库当前包含三个独立工具：
 
 1. 外贸客服中转站（Telegram ↔ Feishu）
 2. 本地离线加密密码记事本（Cold Vault）
+3. 电脑端图片清晰度提升工具
 
 ---
 
@@ -99,6 +100,74 @@ curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
 - `MESSAGE_BRIDGE` 仅作演示，建议改为 Redis 持久化。
 - 增加 Telegram/飞书签名校验。
 - 增加重试、幂等与告警。
+
+---
+
+# 电脑端图片清晰度提升工具
+
+`image_clarity_desktop.py` 是一款面向 Windows、macOS 和 Linux 桌面的中文界面图片增强工具。它使用 Tkinter 提供本地窗口界面，图片处理在本机完成，不需要上传到云端。
+
+## 功能特点
+
+- 小鸭子风格中文操作界面，适合直接在电脑端使用。
+- 支持“上传单张图片”和“上传多张图片”两种入口。
+- 支持 JPG、PNG、BMP、TIFF、WebP 等常见格式。
+- 可调节放大倍数、锐化强度、文字保护强度、对比度和温和去噪。
+- 放大时使用高质量重采样和文字边缘保护蒙版，尽量减少截图、票据、扫描件中的字体变形。
+- 批量处理时自动生成 `*_清晰放大` 文件，不覆盖原图。
+- 处理进度用“游泳的小鸭子”展示：小鸭子游到终点时，图片处理完成。
+- 可用 PyInstaller 打包成 Windows 桌面 exe，也可继续用 Inno Setup 制作安装包。
+
+> 说明：普通算法无法从严重模糊图片中“凭空恢复”全部细节；该工具的目标是在本地离线条件下提升观感，并尽量保护文字边缘形状。
+
+## 安装依赖
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+## 启动软件
+
+```bash
+python3 image_clarity_desktop.py
+```
+
+## 打包 Windows exe
+
+在 Windows 电脑上执行：
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+pyinstaller image_clarity_desktop.spec
+```
+
+打包成功后，可运行：
+
+```text
+dist\小鸭清晰放大器.exe
+```
+
+如果需要“安装包”形式，可以安装 Inno Setup，然后打开并编译：
+
+```text
+installer\windows_installer.iss
+```
+
+编译后会生成：
+
+```text
+dist\installer\小鸭清晰放大器安装包.exe
+```
+
+## 推荐参数
+
+- 文字截图、票据、证件、扫描件：放大 `2x`，清晰锐化 `1.3-1.6`，文字保护 `0.7` 以上。
+- 普通照片：放大 `1.5x-2x`，清晰锐化 `1.2-1.5`，文字保护可适当降低。
+- 如果字体边缘出现白边或锯齿，降低“清晰锐化”并提高“文字保护”。
 
 ---
 
